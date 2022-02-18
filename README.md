@@ -1,1 +1,1 @@
-# file-encryptor
+# directory-encryptor
