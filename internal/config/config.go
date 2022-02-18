@@ -12,8 +12,8 @@ const (
 )
 
 var (
-	SourcePath = flag.String("s", ".", "Path to directory to encrypt")
-	OutputDir  = flag.String("o", "./encrypted", "Output directory")
+	SourceDir = flag.String("s", ".", "Directory to encrypt")
+	OutputDir = flag.String("o", "./encrypted", "Output directory")
 
 	Verbose = flag.Bool("v", false, "Verbose logs")
 

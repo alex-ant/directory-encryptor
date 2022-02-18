@@ -1,11 +1,17 @@
 package main
 
 import (
-	"fmt"
+	"log"
 
 	"github.com/alex-ant/directory-encryptor/internal/config"
+	"github.com/alex-ant/directory-encryptor/internal/encryptor"
 )
 
 func main() {
-	fmt.Println(*config.MaxBatchSize)
+	enc, encErr := encryptor.New(*config.MaxBatchSize, *config.SourceDir, *config.OutputDir, *config.Verbose)
+	if encErr != nil {
+		log.Fatalf("failed to initialize new encrypter processor: %v", encErr)
+	}
+
+	enc.Encrypt()
 }
