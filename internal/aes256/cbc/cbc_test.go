@@ -13,6 +13,7 @@ func TestCBC(t *testing.T) {
 
 	const (
 		testKey = "e3f3fbe7024a443e99bc4932f591fb31"
+		iv      = "1010101010101010"
 
 		minDataSrtLen = 10
 		maxDataSrtLen = 300
@@ -25,13 +26,13 @@ func TestCBC(t *testing.T) {
 		testData := randomString(randomInt(minDataSrtLen, maxDataSrtLen))
 
 		// Encrypt test data.
-		encrypted, encryptedErr := Encrypt(testData, testKey)
+		encrypted, encryptedErr := Encrypt([]byte(testData), testKey, iv)
 		require.NoError(t, encryptedErr)
 
 		// Decrypt test data.
-		decryted, decrytedErr := Decrypt(encrypted, testKey)
+		decryted, decrytedErr := Decrypt(encrypted, testKey, iv)
 		require.NoError(t, decrytedErr)
-		require.Equal(t, testData, decryted)
+		require.Equal(t, testData, string(decryted))
 	}
 }
 
