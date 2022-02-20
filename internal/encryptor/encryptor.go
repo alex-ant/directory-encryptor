@@ -2,6 +2,7 @@ package encryptor
 
 import (
 	"bufio"
+	"compress/gzip"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -20,7 +21,7 @@ import (
 )
 
 const (
-	// TODO: change
+	// TODO: change to 100M
 	sourceFileReadChunkSize int = 16
 )
 
@@ -189,6 +190,10 @@ func (p *Processor) Encrypt() error {
 			log.Fatalf("failed to open result file: %v", resFErr)
 		}
 
+		// Greate GZip writer.
+		gzipResFW := gzip.NewWriter(resF)
+		gzipResFWBuf := bufio.NewWriter(gzipResFW)
+
 		for _, f := range batch {
 			// Marshall and encrypt metadata.
 			fb, _ := json.Marshal(*f)
@@ -206,14 +211,14 @@ func (p *Processor) Encrypt() error {
 			}
 
 			// Write metadata.
-			_, mdWErr := resF.Write(encFb)
+			_, mdWErr := gzipResFWBuf.Write(encFb)
 			if encFbErr != nil {
 				log.Fatalf("failed to write metadata: %v", mdWErr)
 			}
 
 			// Write data delimiters.
 			if f.Filetype == DIRECTORY {
-				_, wErr := resF.Write([]byte("$"))
+				_, wErr := gzipResFWBuf.Write([]byte("$"))
 				if encFbErr != nil {
 					log.Fatalf("failed to write metadata delimiter: %v", wErr)
 				}
@@ -221,7 +226,7 @@ func (p *Processor) Encrypt() error {
 				// No file data to write, move to next file.
 				continue
 			} else {
-				_, wErr := resF.Write([]byte("?"))
+				_, wErr := gzipResFWBuf.Write([]byte("?"))
 				if encFbErr != nil {
 					log.Fatalf("failed to write file data delimiter: %v", wErr)
 				}
@@ -231,7 +236,7 @@ func (p *Processor) Encrypt() error {
 			var chunkI int
 			readErr := readFileInChunks(path.Join(p.sourceDir, f.RelativePath), func(data []byte) {
 				if chunkI > 0 {
-					_, wErr := resF.Write([]byte("?"))
+					_, wErr := gzipResFWBuf.Write([]byte("?"))
 					if encFbErr != nil {
 						log.Fatalf("failed to write metadata delimiter: %v", wErr)
 					}
@@ -250,7 +255,7 @@ func (p *Processor) Encrypt() error {
 					log.Fatalf("failed to generate next IV: %v", pIVErr)
 				}
 
-				_, wErr := resF.Write(encData)
+				_, wErr := gzipResFWBuf.Write(encData)
 				if encFbErr != nil {
 					log.Fatalf("failed to write file data: %v", wErr)
 				}
@@ -261,12 +266,15 @@ func (p *Processor) Encrypt() error {
 				log.Fatalf("failed to read file contents: %v", readErr)
 			}
 
-			_, wErr := resF.Write([]byte("$"))
+			_, wErr := gzipResFWBuf.Write([]byte("$"))
 			if encFbErr != nil {
 				log.Fatalf("failed to write metadata delimiter: %v", wErr)
 			}
 		}
 
+		// Close result file.
+		gzipResFWBuf.Flush()
+		gzipResFW.Close()
 		resF.Close()
 	}
 
@@ -297,9 +305,14 @@ func (p *Processor) Decrypt() error {
 		// Read file.
 		fPath := path.Join(p.sourceDir, sfn)
 
-		encF, encFErr := os.Open(fPath)
+		encGzipF, encGzipFErr := os.Open(fPath)
+		if encGzipFErr != nil {
+			return fmt.Errorf("failed to open file %s: %v", fPath, encGzipFErr)
+		}
+
+		encF, encFErr := gzip.NewReader(encGzipF)
 		if encFErr != nil {
-			return fmt.Errorf("failed to open file %s: %v", fPath, encFErr)
+			return fmt.Errorf("failed to init gzip reader on file %s: %v", fPath, encFErr)
 		}
 
 		br := bufio.NewReader(encF)
@@ -473,6 +486,7 @@ func (p *Processor) Decrypt() error {
 		}
 
 		encF.Close()
+		encGzipF.Close()
 	}
 
 	return nil
