@@ -12,6 +12,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strconv"
 
 	"github.com/alex-ant/directory-encryptor/internal/aes256/cbc"
 )
@@ -19,6 +20,11 @@ import (
 const (
 	// TODO: change
 	chunkSize int = 16
+)
+
+const (
+	ENCRYPT string = "encrypt"
+	DECRYPT string = "decrypt"
 )
 
 // Processor contains encryptor processor data.
@@ -35,7 +41,11 @@ type Processor struct {
 }
 
 // New returns new Processor.
-func New(maxBatchSize int64, sourceDir, outputDir string, encryptionKey string, verboseLogs bool) (*Processor, error) {
+func New(mode string, maxBatchSize int64, sourceDir, outputDir string, encryptionKey string, verboseLogs bool) (*Processor, error) {
+	if mode != ENCRYPT && mode != DECRYPT {
+		return nil, fmt.Errorf("invalid operation mode provided, must be %s or %s", ENCRYPT, DECRYPT)
+	}
+
 	if len(encryptionKey) != 32 {
 		return nil, errors.New("32-byte encryption key is expected")
 	}
@@ -45,7 +55,7 @@ func New(maxBatchSize int64, sourceDir, outputDir string, encryptionKey string, 
 		outputDir = outputDir[:len(outputDir)-1]
 	}
 
-	// Check if output directory exists.
+	// Create output directory exists.
 	if _, err := os.Stat(outputDir); os.IsNotExist(err) {
 		mkdirErr := os.Mkdir(outputDir, 0755)
 		if mkdirErr != nil {
@@ -163,7 +173,12 @@ func (p *Processor) Encrypt() error {
 	// Write result file.
 	for batchI, batch := range batches {
 		// Open batch result file.
-		resF, resFErr := os.OpenFile(fmt.Sprintf("%s/%d.data", p.outputDir, batchI), os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0755)
+		fnStr, fnStrErr := fileNumber(batchI+1, 32)
+		if fnStrErr != nil {
+			log.Fatalf("failed to generate file number string: %v", fnStrErr)
+		}
+
+		resF, resFErr := os.OpenFile(fmt.Sprintf("%s/%s.data", p.outputDir, fnStr), os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0755)
 		if resFErr != nil {
 			log.Fatalf("failed to open result file: %v", resFErr)
 		}
@@ -240,6 +255,11 @@ func (p *Processor) Encrypt() error {
 	return nil
 }
 
+func (p *Processor) Decrypt() error {
+
+	return nil
+}
+
 // base64( enc( json(d1-metadata) ) ) $ base64( enc( json(f1-metadata) ) ) ? base64( enc( f1-contents-p1 ) ) ? base64( enc( f1-contents-p2 ) ) $
 
 func readFileInChunks(file string, handler func(data []byte)) error {
@@ -299,4 +319,27 @@ func formatIV(s string) string {
 	}
 
 	return res
+}
+
+func fileNumber(i, minChars int) (string, error) {
+	if i < 0 {
+		return "", errors.New("invalid i provided")
+	}
+
+	iStr := strconv.Itoa(i)
+
+	iLen := len(iStr)
+	if minChars < iLen {
+		minChars = iLen
+	}
+
+	var res string
+
+	for j := 0; j < minChars-iLen; j++ {
+		res += "0"
+	}
+
+	res += iStr
+
+	return res, nil
 }

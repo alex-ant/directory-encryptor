@@ -17,6 +17,8 @@ var (
 	SourceDir = flag.String("s", ".", "Directory to encrypt")
 	OutputDir = flag.String("o", "./encrypted", "Output directory")
 
+	Mode = flag.String("m", "", "operation mode (encrypt/decrypt)")
+
 	Verbose = flag.Bool("v", false, "Verbose logs")
 
 	MaxBatchSize = flag.Int64("b", batchSize4p2Gb, "Max encrypted batch file size in bytes (4.2Gb by default)")
