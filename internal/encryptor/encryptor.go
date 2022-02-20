@@ -21,7 +21,7 @@ import (
 
 const (
 	// TODO: change
-	chunkSize int = 16
+	sourceFileReadChunkSize int = 16
 )
 
 const (
@@ -319,10 +319,10 @@ func (p *Processor) Decrypt() error {
 		}
 
 		decryptMD := func() (*fileInfo, error) {
-			// Decrypt directory metadata.
+			// Decrypt metadata.
 			decMD, decMDErr := cbc.Decrypt(currSectorData, p.encryptionKey, p.iv)
 			if decMDErr != nil {
-				return nil, fmt.Errorf("failed to decrypt directory metadata: %v", decMDErr)
+				return nil, fmt.Errorf("failed to decrypt metadata: %v", decMDErr)
 			}
 
 			// Update IV.
@@ -420,7 +420,7 @@ func (p *Processor) Decrypt() error {
 						return fmt.Errorf("expected file (%d) metadata but received (%d)", FILE, fi.Filetype)
 					}
 
-					fName := fmt.Sprintf("%s/%s.data", p.outputDir, fi.RelativePath)
+					fName := fmt.Sprintf("%s/%s", p.outputDir, fi.RelativePath)
 
 					// Create file directory if doesn't exist.
 					os.MkdirAll(filepath.Dir(fName), 0755)
@@ -489,7 +489,7 @@ func readFileInChunks(file string, handler func(data []byte)) error {
 	defer f.Close()
 
 	reader := bufio.NewReader(f)
-	buf := make([]byte, chunkSize)
+	buf := make([]byte, sourceFileReadChunkSize)
 
 	for {
 		n, rErr := reader.Read(buf)
