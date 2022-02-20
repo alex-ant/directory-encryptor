@@ -111,6 +111,9 @@ type fileInfo struct {
 func (p *Processor) Encrypt() error {
 	files := []*fileInfo{}
 
+	// Define size stat counters.
+	var writtenMD, writtenFiledata int64
+
 	// List files to encrypt.
 	walkErr := filepath.Walk(
 		p.sourceDir,
@@ -215,12 +218,16 @@ func (p *Processor) Encrypt() error {
 				log.Fatalf("failed to write metadata: %v", mdWErr)
 			}
 
+			writtenMD += int64(len(encFb))
+
 			// Write data delimiters.
 			if f.Filetype == DIRECTORY {
 				_, wErr := gzipResFWBuf.Write([]byte("$"))
 				if encFbErr != nil {
 					log.Fatalf("failed to write metadata delimiter: %v", wErr)
 				}
+
+				writtenMD += 1
 
 				// No file data to write, move to next file.
 				continue
@@ -229,6 +236,8 @@ func (p *Processor) Encrypt() error {
 				if encFbErr != nil {
 					log.Fatalf("failed to write file data delimiter: %v", wErr)
 				}
+
+				writtenMD += 1
 			}
 
 			// Read file contents.
@@ -239,6 +248,8 @@ func (p *Processor) Encrypt() error {
 					if encFbErr != nil {
 						log.Fatalf("failed to write metadata delimiter: %v", wErr)
 					}
+
+					writtenMD += 1
 				}
 
 				// Encrypt and write file contents.
@@ -259,6 +270,8 @@ func (p *Processor) Encrypt() error {
 					log.Fatalf("failed to write file data: %v", wErr)
 				}
 
+				writtenFiledata += int64(len(encData))
+
 				chunkI++
 			})
 			if readErr != nil {
@@ -269,6 +282,8 @@ func (p *Processor) Encrypt() error {
 			if encFbErr != nil {
 				log.Fatalf("failed to write metadata delimiter: %v", wErr)
 			}
+
+			writtenMD += 1
 		}
 
 		// Close result file.
@@ -276,6 +291,8 @@ func (p *Processor) Encrypt() error {
 		gzipResFW.Close()
 		resF.Close()
 	}
+
+	log.Printf("encrypted %d bytes of metadata and %d bytes of filedata", writtenMD, writtenFiledata)
 
 	return nil
 }
