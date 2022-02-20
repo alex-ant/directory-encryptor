@@ -8,10 +8,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"os"
 	"path"
 	"path/filepath"
+	"sort"
 	"strconv"
 
 	"github.com/alex-ant/directory-encryptor/internal/aes256/cbc"
@@ -48,6 +50,10 @@ func New(mode string, maxBatchSize int64, sourceDir, outputDir string, encryptio
 
 	if len(encryptionKey) != 32 {
 		return nil, errors.New("32-byte encryption key is expected")
+	}
+
+	if outputDir == "" {
+		return nil, errors.New("empty outputDir provided")
 	}
 
 	// Trim output path.
@@ -183,7 +189,7 @@ func (p *Processor) Encrypt() error {
 			log.Fatalf("failed to open result file: %v", resFErr)
 		}
 
-		for fi, f := range batch {
+		for _, f := range batch {
 			// Marshall and encrypt metadata.
 			fb, _ := json.Marshal(*f)
 
@@ -207,11 +213,9 @@ func (p *Processor) Encrypt() error {
 
 			// Write data delimiters.
 			if f.Filetype == DIRECTORY {
-				if fi < len(batch)-1 {
-					_, wErr := resF.Write([]byte("$"))
-					if encFbErr != nil {
-						log.Fatalf("failed to write metadata delimiter: %v", wErr)
-					}
+				_, wErr := resF.Write([]byte("$"))
+				if encFbErr != nil {
+					log.Fatalf("failed to write metadata delimiter: %v", wErr)
 				}
 
 				// No file data to write, move to next file.
@@ -270,6 +274,206 @@ func (p *Processor) Encrypt() error {
 }
 
 func (p *Processor) Decrypt() error {
+	// List encrypted files.
+	var sFilenames []string
+
+	sFiles, sFilesErr := ioutil.ReadDir(p.sourceDir)
+	if sFilesErr != nil {
+		return fmt.Errorf("failed to list source files directory: %v", sFilesErr)
+	}
+
+	for _, sf := range sFiles {
+		if sf.IsDir() {
+			continue
+		}
+
+		sFilenames = append(sFilenames, sf.Name())
+	}
+
+	sort.Strings(sFilenames)
+
+	// Loop over encrypted files.
+	for _, sfn := range sFilenames {
+		// Read file.
+		fPath := path.Join(p.sourceDir, sfn)
+
+		encF, encFErr := os.Open(fPath)
+		if encFErr != nil {
+			return fmt.Errorf("failed to open file %s: %v", fPath, encFErr)
+		}
+
+		br := bufio.NewReader(encF)
+
+		var currSectorData []byte
+		var currFile *os.File
+		var mdRead bool
+
+		resetState := func() {
+			currSectorData = []byte{}
+			mdRead = false
+
+			if currFile != nil {
+				currFile.Close()
+				currFile = nil
+			}
+		}
+
+		decryptMD := func() (*fileInfo, error) {
+			// Decrypt directory metadata.
+			decMD, decMDErr := cbc.Decrypt(currSectorData, p.encryptionKey, p.iv)
+			if decMDErr != nil {
+				return nil, fmt.Errorf("failed to decrypt directory metadata: %v", decMDErr)
+			}
+
+			// Update IV.
+			var pIVErr error
+			p.iv, pIVErr = nextIV(p.iv)
+			if pIVErr != nil {
+				return nil, fmt.Errorf("failed to generate next IV: %v", pIVErr)
+			}
+
+			// Unmarshall metadata.
+			var fi fileInfo
+
+			fiErr := json.Unmarshal(decMD, &fi)
+			if pIVErr != nil {
+				return nil, fmt.Errorf("failed to unmarshall metadata (%s): %v", string(decMD), fiErr)
+			}
+
+			return &fi, nil
+		}
+
+		for {
+			b, bErr := br.ReadByte()
+			if bErr != nil {
+				if bErr != io.EOF {
+					return fmt.Errorf("failed to read file %s byte: %v", fPath, bErr)
+				}
+
+				break
+			}
+
+			switch string(b) {
+			case "$":
+				if !mdRead {
+					// Decrypt directory metadata.
+					fi, fiErr := decryptMD()
+					if fiErr != nil {
+						return fmt.Errorf("failed to decrypt directory metadata: %v", fiErr)
+					}
+
+					if fi.Filetype != DIRECTORY {
+						return fmt.Errorf("expected directory (%d) metadata but received (%d)", DIRECTORY, fi.Filetype)
+					}
+
+					// Create directory.
+					dirPath := path.Join(p.outputDir, fi.RelativePath)
+
+					mkdirErr := os.MkdirAll(dirPath, 0755)
+					if mkdirErr != nil {
+						return fmt.Errorf("failed to create directory %s", dirPath)
+					}
+
+					// Reset state.
+					resetState()
+
+					// Proceed reading next bytes.
+					continue
+
+				} else {
+					// Decrypt file part contents.
+					decFC, decFCErr := cbc.Decrypt(currSectorData, p.encryptionKey, p.iv)
+					if decFCErr != nil {
+						return fmt.Errorf("failed to decrypt file part contents: %v", decFCErr)
+					}
+
+					// Update IV.
+					var pIVErr error
+					p.iv, pIVErr = nextIV(p.iv)
+					if pIVErr != nil {
+						return fmt.Errorf("failed to generate next IV: %v", pIVErr)
+					}
+
+					// Append to file.
+					_, decFCWErr := currFile.Write(decFC)
+					if decFCWErr != nil {
+						log.Fatalf("failed to write file part contents: %v", decFCWErr)
+					}
+
+					// Reset state.
+					resetState()
+
+					// Proceed reading next bytes.
+					continue
+				}
+
+			case "?":
+				// Process file metadata
+				if !mdRead {
+					// Decrypt file metadata.
+					fi, fiErr := decryptMD()
+					if fiErr != nil {
+						return fmt.Errorf("failed to decrypt file metadata: %v", fiErr)
+					}
+
+					if fi.Filetype != FILE {
+						return fmt.Errorf("expected file (%d) metadata but received (%d)", FILE, fi.Filetype)
+					}
+
+					fName := fmt.Sprintf("%s/%s.data", p.outputDir, fi.RelativePath)
+
+					// Create file directory if doesn't exist.
+					os.MkdirAll(filepath.Dir(fName), 0755)
+
+					// Create file.
+					decF, decFErr := os.OpenFile(fName, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0755)
+					if decFErr != nil {
+						return fmt.Errorf("failed to open decrypted file: %v", decFErr)
+					}
+
+					// Store file pointer.
+					currFile = decF
+
+					mdRead = true
+
+					currSectorData = []byte{}
+
+					// Continue with file contents in the following bytes.
+					continue
+				} else {
+					// Decrypt file part contents.
+					decFC, decFCErr := cbc.Decrypt(currSectorData, p.encryptionKey, p.iv)
+					if decFCErr != nil {
+						return fmt.Errorf("failed to decrypt file part contents: %v", decFCErr)
+					}
+
+					// Update IV.
+					var pIVErr error
+					p.iv, pIVErr = nextIV(p.iv)
+					if pIVErr != nil {
+						return fmt.Errorf("failed to generate next IV: %v", pIVErr)
+					}
+
+					// Append to file.
+					_, decFCWErr := currFile.Write(decFC)
+					if decFCWErr != nil {
+						log.Fatalf("failed to write file part contents: %v", decFCWErr)
+					}
+
+					currSectorData = []byte{}
+
+					// Continue with file contents in the following bytes.
+					continue
+
+				}
+
+			}
+
+			currSectorData = append(currSectorData, b)
+		}
+
+		encF.Close()
+	}
 
 	return nil
 }
