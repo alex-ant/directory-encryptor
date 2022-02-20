@@ -192,6 +192,13 @@ func (p *Processor) Encrypt() error {
 				log.Fatalf("failed to encrypt metadata: %v", encFbErr)
 			}
 
+			// Update IV.
+			var pIVErr error
+			p.iv, pIVErr = nextIV(p.iv)
+			if pIVErr != nil {
+				log.Fatalf("failed to generate next IV: %v", pIVErr)
+			}
+
 			// Write metadata.
 			_, mdWErr := resF.Write(encFb)
 			if encFbErr != nil {
@@ -230,6 +237,13 @@ func (p *Processor) Encrypt() error {
 				encData, encDataErr := cbc.Encrypt(data, p.encryptionKey, p.iv)
 				if encDataErr != nil {
 					log.Fatalf("failed to encrypt file data: %v", encDataErr)
+				}
+
+				// Update IV.
+				var pIVErr error
+				p.iv, pIVErr = nextIV(p.iv)
+				if pIVErr != nil {
+					log.Fatalf("failed to generate next IV: %v", pIVErr)
 				}
 
 				_, wErr := resF.Write(encData)
@@ -319,6 +333,19 @@ func formatIV(s string) string {
 	}
 
 	return res
+}
+
+func nextIV(iv string) (string, error) {
+	if len(iv) != 16 {
+		return "", errors.New("invalid IV provided, must be of length 16")
+	}
+
+	h, hErr := sha256Hash(iv, 2)
+	if hErr != nil {
+		return "", fmt.Errorf("failed to generate IV hash: %v", hErr)
+	}
+
+	return h[:16], nil
 }
 
 func fileNumber(i, minChars int) (string, error) {
