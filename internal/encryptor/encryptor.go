@@ -21,8 +21,7 @@ import (
 )
 
 const (
-	// TODO: change to 100M
-	sourceFileReadChunkSize int = 16
+	sourceFileReadChunkSize int = 100 * 1024 * 1024
 )
 
 const (
