@@ -12,6 +12,8 @@ const (
 )
 
 var (
+	EncryptionKey = flag.String("k", "", "Encryption key")
+
 	SourceDir = flag.String("s", ".", "Directory to encrypt")
 	OutputDir = flag.String("o", "./encrypted", "Output directory")
 

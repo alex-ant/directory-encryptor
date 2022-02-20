@@ -2,16 +2,22 @@ package encryptor
 
 import (
 	"bufio"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
 	"os"
 	"path"
 	"path/filepath"
+
+	"github.com/alex-ant/directory-encryptor/internal/aes256/cbc"
 )
 
 const (
+	// TODO: change
 	chunkSize int = 16
 )
 
@@ -22,11 +28,23 @@ type Processor struct {
 	sourceDir string
 	outputDir string
 
+	encryptionKey string
+	iv            string
+
 	verboseLogs bool
 }
 
 // New returns new Processor.
-func New(maxBatchSize int64, sourceDir, outputDir string, verboseLogs bool) (*Processor, error) {
+func New(maxBatchSize int64, sourceDir, outputDir string, encryptionKey string, verboseLogs bool) (*Processor, error) {
+	if len(encryptionKey) != 32 {
+		return nil, errors.New("32-byte encryption key is expected")
+	}
+
+	// Trim output path.
+	if outputDir[len(outputDir)-1] == '/' {
+		outputDir = outputDir[:len(outputDir)-1]
+	}
+
 	// Check if output directory exists.
 	if _, err := os.Stat(outputDir); os.IsNotExist(err) {
 		mkdirErr := os.Mkdir(outputDir, 0755)
@@ -40,11 +58,22 @@ func New(maxBatchSize int64, sourceDir, outputDir string, verboseLogs bool) (*Pr
 		return nil, fmt.Errorf("source directory %s doesn't exist", sourceDir)
 	}
 
+	// Deternime IV.
+	iv, ivErr := sha256Hash(encryptionKey, 10)
+	if ivErr != nil {
+		return nil, fmt.Errorf("failed to determine IV: %v", ivErr)
+	}
+
+	iv = formatIV(iv)
+
 	return &Processor{
 		maxBatchSize: maxBatchSize,
 
 		sourceDir: sourceDir,
 		outputDir: outputDir,
+
+		encryptionKey: encryptionKey,
+		iv:            iv,
 
 		verboseLogs: verboseLogs,
 	}, nil
@@ -131,32 +160,87 @@ func (p *Processor) Encrypt() error {
 
 	batches = append(batches, currBatch)
 
-	// Print.
-	for _, batch := range batches {
-		fmt.Println("-----")
+	// Write result file.
+	for batchI, batch := range batches {
+		// Open batch result file.
+		resF, resFErr := os.OpenFile(fmt.Sprintf("%s/%d.data", p.outputDir, batchI), os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0755)
+		if resFErr != nil {
+			log.Fatalf("failed to open result file: %v", resFErr)
+		}
 
-		for _, f := range batch {
-			// Marshall metadata.
+		for fi, f := range batch {
+			// Marshall and encrypt metadata.
 			fb, _ := json.Marshal(*f)
 
-			fmt.Println(string(fb))
+			encFb, encFbErr := cbc.Encrypt(fb, p.encryptionKey, p.iv)
+			if encFbErr != nil {
+				log.Fatalf("failed to encrypt metadata: %v", encFbErr)
+			}
 
-			if f.Filetype == FILE {
-				// Read file contents.
-				readErr := readFileInChunks(path.Join(p.sourceDir, f.RelativePath), func(data []byte) {
-					fmt.Println(string(data))
-				})
-				if readErr != nil {
-					log.Fatalf("failed to read file contents: %v", readErr)
+			// Write metadata.
+			_, mdWErr := resF.Write(encFb)
+			if encFbErr != nil {
+				log.Fatalf("failed to write metadata: %v", mdWErr)
+			}
+
+			// Write data delimiters.
+			if f.Filetype == DIRECTORY {
+				if fi < len(batch)-1 {
+					_, wErr := resF.Write([]byte("$"))
+					if encFbErr != nil {
+						log.Fatalf("failed to write metadata delimiter: %v", wErr)
+					}
 				}
+
+				// No file data to write, move to next file.
+				continue
+			} else {
+				_, wErr := resF.Write([]byte("?"))
+				if encFbErr != nil {
+					log.Fatalf("failed to write file data delimiter: %v", wErr)
+				}
+			}
+
+			// Read file contents.
+			var chunkI int
+			readErr := readFileInChunks(path.Join(p.sourceDir, f.RelativePath), func(data []byte) {
+				if chunkI > 0 {
+					_, wErr := resF.Write([]byte("?"))
+					if encFbErr != nil {
+						log.Fatalf("failed to write metadata delimiter: %v", wErr)
+					}
+				}
+
+				// Encrypt and write file contents.
+				encData, encDataErr := cbc.Encrypt(data, p.encryptionKey, p.iv)
+				if encDataErr != nil {
+					log.Fatalf("failed to encrypt file data: %v", encDataErr)
+				}
+
+				_, wErr := resF.Write(encData)
+				if encFbErr != nil {
+					log.Fatalf("failed to write file data: %v", wErr)
+				}
+
+				chunkI++
+			})
+			if readErr != nil {
+				log.Fatalf("failed to read file contents: %v", readErr)
+			}
+
+			_, wErr := resF.Write([]byte("$"))
+			if encFbErr != nil {
+				log.Fatalf("failed to write metadata delimiter: %v", wErr)
 			}
 		}
 
-		break // TODO: remove
+		resF.Close()
 	}
 
 	return nil
 }
+
+// base64( enc( json(d1-metadata) ) ) $ base64( enc( json(f1-metadata) ) ) ? base64( enc( f1-contents-p1 ) ) ? base64( enc( f1-contents-p2 ) ) $
 
 func readFileInChunks(file string, handler func(data []byte)) error {
 	f, fErr := os.Open(file)
@@ -185,4 +269,34 @@ func readFileInChunks(file string, handler func(data []byte)) error {
 	return nil
 }
 
-// base64( enc( json(f1-metadata) ) ) ? base64( enc( f1-contents-p1 ) ) base64( enc( f1-contents-p2 ) ) $ base64( enc( json(d1-metadata) ) ) $
+func sha256Hash(data string, interN int) (string, error) {
+	if interN < 1 {
+		return "", errors.New("invalid interN provided")
+	}
+
+	for i := 0; i < interN; i++ {
+		h := sha256.New()
+		h.Write([]byte(data))
+		data = hex.EncodeToString(h.Sum(nil))
+	}
+
+	return data, nil
+}
+
+func formatIV(s string) string {
+	var res string
+
+	if len(s) < 16 {
+		for i := 0; i < 16; i++ {
+			if i < len(s) {
+				res += string(s[i])
+			} else {
+				res += "x"
+			}
+		}
+	} else {
+		return s[:16]
+	}
+
+	return res
+}
