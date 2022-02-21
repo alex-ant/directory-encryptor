@@ -8,7 +8,7 @@ import (
 )
 
 const (
-	batchSize4p2Gb = 4509715660
+	batchSize200Mb = 200 * 1024 * 1024
 )
 
 var (
@@ -21,7 +21,7 @@ var (
 
 	Verbose = flag.Bool("v", false, "Verbose logs")
 
-	MaxBatchSize = flag.Int64("b", batchSize4p2Gb, "Max encrypted batch file size in bytes (4.2Gb by default)")
+	MaxBatchSize = flag.Int64("b", batchSize200Mb, "Max encrypted batch file size in bytes (200Mb by default)")
 )
 
 func init() {
