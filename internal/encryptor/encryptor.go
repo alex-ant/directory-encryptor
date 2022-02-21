@@ -167,6 +167,19 @@ func (p *Processor) Encrypt() error {
 
 	currBatch := []*fileInfo{}
 	for _, f := range files {
+		if f.size > p.maxBatchSize {
+			// Store large files in a single batch.
+			if len(currBatch) > 0 {
+				batches = append(batches, currBatch)
+				currBatch = []*fileInfo{}
+				currentBatchSize = 0
+			}
+
+			batches = append(batches, []*fileInfo{f})
+
+			continue
+		}
+
 		if currentBatchSize+f.size > p.maxBatchSize {
 			batches = append(batches, currBatch)
 			currBatch = []*fileInfo{}
@@ -177,7 +190,9 @@ func (p *Processor) Encrypt() error {
 		currentBatchSize += f.size
 	}
 
-	batches = append(batches, currBatch)
+	if len(currBatch) > 0 {
+		batches = append(batches, currBatch)
+	}
 
 	// Write result file.
 	for batchI, batch := range batches {
