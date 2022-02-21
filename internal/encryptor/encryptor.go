@@ -43,18 +43,26 @@ type Processor struct {
 }
 
 // New returns new Processor.
-func New(mode string, maxBatchSize int64, sourceDir, outputDir string, encryptionKey string, verboseLogs bool) (*Processor, error) {
+func New(mode string, maxBatchSize int64, sourceDir, outputDir string, password string, verboseLogs bool) (*Processor, error) {
 	if mode != ENCRYPT && mode != DECRYPT {
 		return nil, fmt.Errorf("invalid operation mode provided, must be %s or %s", ENCRYPT, DECRYPT)
 	}
 
-	if len(encryptionKey) != 32 {
-		return nil, errors.New("32-byte encryption key is expected")
+	if password == "" {
+		return nil, errors.New("empty password provided")
 	}
 
 	if outputDir == "" {
 		return nil, errors.New("empty outputDir provided")
 	}
+
+	// Generate encryption key.
+	encryptionKey, encryptionKeyErr := sha256Hash(password, 10)
+	if encryptionKeyErr != nil {
+		return nil, fmt.Errorf("failed to generate encryption key from password: %v", encryptionKeyErr)
+	}
+
+	encryptionKey = encryptionKey[:32]
 
 	// Trim output path.
 	if outputDir[len(outputDir)-1] == '/' {
