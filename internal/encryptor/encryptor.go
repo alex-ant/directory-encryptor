@@ -24,11 +24,6 @@ const (
 	sourceFileReadChunkSize int = 100 * 1024 * 1024
 )
 
-const (
-	ENCRYPT string = "encrypt"
-	DECRYPT string = "decrypt"
-)
-
 // Processor contains encryptor processor data.
 type Processor struct {
 	maxBatchSize int64
@@ -43,11 +38,7 @@ type Processor struct {
 }
 
 // New returns new Processor.
-func New(mode string, maxBatchSize int64, sourceDir, outputDir string, password string, verboseLogs bool) (*Processor, error) {
-	if mode != ENCRYPT && mode != DECRYPT {
-		return nil, fmt.Errorf("invalid operation mode provided, must be %s or %s", ENCRYPT, DECRYPT)
-	}
-
+func New(maxBatchSize int64, sourceDir, outputDir string, password string, verboseLogs bool) (*Processor, error) {
 	if password == "" {
 		return nil, errors.New("empty password provided")
 	}

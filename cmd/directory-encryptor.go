@@ -9,7 +9,7 @@ import (
 )
 
 func main() {
-	enc, encErr := encryptor.New(*config.Mode, *config.MaxBatchSize, *config.SourceDir, *config.OutputDir, *config.EncryptionPassword, *config.Verbose)
+	enc, encErr := encryptor.New(*config.MaxBatchSize, *config.SourceDir, *config.OutputDir, *config.EncryptionPassword, *config.Verbose)
 	if encErr != nil {
 		log.Fatalf("failed to initialize new encrypter processor: %v", encErr)
 	}
