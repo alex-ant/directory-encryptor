@@ -198,12 +198,12 @@ func (p *Processor) Encrypt() error {
 		// Open batch result file.
 		fnStr, fnStrErr := fileNumber(batchI+1, 32)
 		if fnStrErr != nil {
-			log.Fatalf("failed to generate file number string: %v", fnStrErr)
+			return fmt.Errorf("failed to generate file number string: %v", fnStrErr)
 		}
 
 		resF, resFErr := os.OpenFile(fmt.Sprintf("%s/%s.data", p.outputDir, fnStr), os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0755)
 		if resFErr != nil {
-			log.Fatalf("failed to open result file: %v", resFErr)
+			return fmt.Errorf("failed to open result file: %v", resFErr)
 		}
 
 		// Greate GZip writer.
@@ -212,24 +212,27 @@ func (p *Processor) Encrypt() error {
 
 		for _, f := range batch {
 			// Marshall and encrypt metadata.
-			fb, _ := json.Marshal(*f)
+			fb, fbErr := json.Marshal(*f)
+			if fbErr != nil {
+
+			}
 
 			encFb, encFbErr := cbc.Encrypt(fb, p.encryptionKey, p.iv)
 			if encFbErr != nil {
-				log.Fatalf("failed to encrypt metadata: %v", encFbErr)
+				return fmt.Errorf("failed to encrypt metadata: %v", encFbErr)
 			}
 
 			// Update IV.
 			var pIVErr error
 			p.iv, pIVErr = nextIV(p.iv)
 			if pIVErr != nil {
-				log.Fatalf("failed to generate next IV: %v", pIVErr)
+				return fmt.Errorf("failed to generate next IV: %v", pIVErr)
 			}
 
 			// Write metadata.
 			_, mdWErr := gzipResFWBuf.Write(encFb)
-			if encFbErr != nil {
-				log.Fatalf("failed to write metadata: %v", mdWErr)
+			if mdWErr != nil {
+				return fmt.Errorf("failed to write metadata: %v", mdWErr)
 			}
 
 			writtenMD += int64(len(encFb))
@@ -237,8 +240,8 @@ func (p *Processor) Encrypt() error {
 			// Write data delimiters.
 			if f.Filetype == DIRECTORY {
 				_, wErr := gzipResFWBuf.Write([]byte("$"))
-				if encFbErr != nil {
-					log.Fatalf("failed to write metadata delimiter: %v", wErr)
+				if wErr != nil {
+					return fmt.Errorf("failed to write metadata delimiter: %v", wErr)
 				}
 
 				writtenMD += 1
@@ -247,8 +250,8 @@ func (p *Processor) Encrypt() error {
 				continue
 			} else {
 				_, wErr := gzipResFWBuf.Write([]byte("?"))
-				if encFbErr != nil {
-					log.Fatalf("failed to write file data delimiter: %v", wErr)
+				if wErr != nil {
+					return fmt.Errorf("failed to write file data delimiter: %v", wErr)
 				}
 
 				writtenMD += 1
@@ -256,11 +259,11 @@ func (p *Processor) Encrypt() error {
 
 			// Read file contents.
 			var chunkI int
-			readErr := readFileInChunks(path.Join(p.sourceDir, f.RelativePath), func(data []byte) {
+			readErr := readFileInChunks(path.Join(p.sourceDir, f.RelativePath), func(data []byte) error {
 				if chunkI > 0 {
 					_, wErr := gzipResFWBuf.Write([]byte("?"))
-					if encFbErr != nil {
-						log.Fatalf("failed to write metadata delimiter: %v", wErr)
+					if wErr != nil {
+						return fmt.Errorf("failed to write metadata delimiter: %v", wErr)
 					}
 
 					writtenMD += 1
@@ -269,32 +272,34 @@ func (p *Processor) Encrypt() error {
 				// Encrypt and write file contents.
 				encData, encDataErr := cbc.Encrypt(data, p.encryptionKey, p.iv)
 				if encDataErr != nil {
-					log.Fatalf("failed to encrypt file data: %v", encDataErr)
+					return fmt.Errorf("failed to encrypt file data: %v", encDataErr)
 				}
 
 				// Update IV.
 				var pIVErr error
 				p.iv, pIVErr = nextIV(p.iv)
 				if pIVErr != nil {
-					log.Fatalf("failed to generate next IV: %v", pIVErr)
+					return fmt.Errorf("failed to generate next IV: %v", pIVErr)
 				}
 
 				_, wErr := gzipResFWBuf.Write(encData)
-				if encFbErr != nil {
-					log.Fatalf("failed to write file data: %v", wErr)
+				if wErr != nil {
+					return fmt.Errorf("failed to write file data: %v", wErr)
 				}
 
 				writtenFiledata += int64(len(encData))
 
 				chunkI++
+
+				return nil
 			})
 			if readErr != nil {
-				log.Fatalf("failed to read file contents: %v", readErr)
+				return fmt.Errorf("failed to read file contents: %v", readErr)
 			}
 
 			_, wErr := gzipResFWBuf.Write([]byte("$"))
-			if encFbErr != nil {
-				log.Fatalf("failed to write metadata delimiter: %v", wErr)
+			if wErr != nil {
+				return fmt.Errorf("failed to write metadata delimiter: %v", wErr)
 			}
 
 			writtenMD += 1
@@ -378,8 +383,10 @@ func (p *Processor) Decrypt() error {
 			// Unmarshall metadata.
 			var fi fileInfo
 
+			log.Printf("-->> Decrypt file metadata ===%v===\n", decMD)
+
 			fiErr := json.Unmarshal(decMD, &fi)
-			if pIVErr != nil {
+			if fiErr != nil {
 				return nil, fmt.Errorf("failed to unmarshall metadata (%s): %v", string(decMD), fiErr)
 			}
 
@@ -440,7 +447,7 @@ func (p *Processor) Decrypt() error {
 					// Append to file.
 					_, decFCWErr := currFile.Write(decFC)
 					if decFCWErr != nil {
-						log.Fatalf("failed to write file part contents: %v", decFCWErr)
+						return fmt.Errorf("failed to write file part contents: %v", decFCWErr)
 					}
 
 					// Reset state.
@@ -453,6 +460,7 @@ func (p *Processor) Decrypt() error {
 			case "?":
 				// Process file metadata
 				if !mdRead {
+
 					// Decrypt file metadata.
 					fi, fiErr := decryptMD()
 					if fiErr != nil {
@@ -500,7 +508,7 @@ func (p *Processor) Decrypt() error {
 					// Append to file.
 					_, decFCWErr := currFile.Write(decFC)
 					if decFCWErr != nil {
-						log.Fatalf("failed to write file part contents: %v", decFCWErr)
+						return fmt.Errorf("failed to write file part contents: %v", decFCWErr)
 					}
 
 					currSectorData = []byte{}
@@ -524,7 +532,7 @@ func (p *Processor) Decrypt() error {
 
 // base64( enc( json(d1-metadata) ) ) $ base64( enc( json(f1-metadata) ) ) ? base64( enc( f1-contents-p1 ) ) ? base64( enc( f1-contents-p2 ) ) $
 
-func readFileInChunks(file string, handler func(data []byte)) error {
+func readFileInChunks(file string, handler func(data []byte) error) error {
 	f, fErr := os.Open(file)
 	if fErr != nil {
 		return fmt.Errorf("failed to open file %s: %v", file, fErr)
@@ -545,7 +553,10 @@ func readFileInChunks(file string, handler func(data []byte)) error {
 			break
 		}
 
-		handler(buf[0:n])
+		hErr := handler(buf[0:n])
+		if hErr != nil {
+			return fmt.Errorf("handler error: %v", hErr)
+		}
 	}
 
 	return nil
