@@ -238,7 +238,8 @@ func (p *Processor) Encrypt() error {
 			writtenMD += int64(len(encFb))
 
 			// Write data delimiters.
-			if f.Filetype == DIRECTORY {
+			switch f.Filetype {
+			case DIRECTORY:
 				_, wErr := gzipResFWBuf.Write([]byte("$"))
 				if wErr != nil {
 					return fmt.Errorf("failed to write metadata delimiter: %v", wErr)
@@ -248,13 +249,17 @@ func (p *Processor) Encrypt() error {
 
 				// No file data to write, move to next file.
 				continue
-			} else {
+
+			case FILE:
 				_, wErr := gzipResFWBuf.Write([]byte("?"))
 				if wErr != nil {
 					return fmt.Errorf("failed to write file data delimiter: %v", wErr)
 				}
 
 				writtenMD += 1
+
+			default:
+				return fmt.Errorf("invalid filetype in metadata: %v", f.Filetype)
 			}
 
 			// Read file contents.
