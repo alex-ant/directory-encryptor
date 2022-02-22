@@ -328,6 +328,11 @@ func (p *Processor) Decrypt() error {
 			continue
 		}
 
+		// Skip hidden files.
+		if sf.Name()[:1] == "." {
+			continue
+		}
+
 		sFilenames = append(sFilenames, sf.Name())
 	}
 
