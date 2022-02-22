@@ -16,10 +16,16 @@ func main() {
 
 	startTime := time.Now()
 
+	var pErr error
+
 	if *config.Mode == "encrypt" {
-		enc.Encrypt()
+		pErr = enc.Encrypt()
 	} else {
-		enc.Decrypt()
+		pErr = enc.Decrypt()
+	}
+
+	if pErr != nil {
+		log.Printf("failed to %s data: %v", *config.Mode, pErr)
 	}
 
 	log.Printf("%s finished in %d seconds", *config.Mode, int(time.Since(startTime).Seconds()))
