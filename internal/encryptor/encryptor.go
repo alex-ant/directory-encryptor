@@ -214,7 +214,7 @@ func (p *Processor) Encrypt() error {
 			// Marshall and encrypt metadata.
 			fb, fbErr := json.Marshal(*f)
 			if fbErr != nil {
-
+				return fmt.Errorf("failed to marshall metadata: %v", fbErr)
 			}
 
 			encFb, encFbErr := cbc.Encrypt(fb, p.encryptionKey, p.iv)
