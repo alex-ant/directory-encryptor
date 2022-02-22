@@ -195,6 +195,13 @@ func (p *Processor) Encrypt() error {
 
 	// Write result file.
 	for batchI, batch := range batches {
+		// Update IV.
+		var pIVErr error
+		p.iv, pIVErr = nextIV(p.iv)
+		if pIVErr != nil {
+			return fmt.Errorf("failed to generate next IV: %v", pIVErr)
+		}
+
 		// Open batch result file.
 		fnStr, fnStrErr := fileNumber(batchI+1, 32)
 		if fnStrErr != nil {
@@ -220,13 +227,6 @@ func (p *Processor) Encrypt() error {
 			encFb, encFbErr := cbc.Encrypt(fb, p.encryptionKey, p.iv)
 			if encFbErr != nil {
 				return fmt.Errorf("failed to encrypt metadata: %v", encFbErr)
-			}
-
-			// Update IV.
-			var pIVErr error
-			p.iv, pIVErr = nextIV(p.iv)
-			if pIVErr != nil {
-				return fmt.Errorf("failed to generate next IV: %v", pIVErr)
 			}
 
 			// Write metadata.
@@ -278,13 +278,6 @@ func (p *Processor) Encrypt() error {
 				encData, encDataErr := cbc.Encrypt(data, p.encryptionKey, p.iv)
 				if encDataErr != nil {
 					return fmt.Errorf("failed to encrypt file data: %v", encDataErr)
-				}
-
-				// Update IV.
-				var pIVErr error
-				p.iv, pIVErr = nextIV(p.iv)
-				if pIVErr != nil {
-					return fmt.Errorf("failed to generate next IV: %v", pIVErr)
 				}
 
 				_, wErr := gzipResFWBuf.Write(encData)
@@ -342,6 +335,13 @@ func (p *Processor) Decrypt() error {
 
 	// Loop over encrypted files.
 	for _, sfn := range sFilenames {
+		// Update IV.
+		var pIVErr error
+		p.iv, pIVErr = nextIV(p.iv)
+		if pIVErr != nil {
+			return fmt.Errorf("failed to generate next IV: %v", pIVErr)
+		}
+
 		// Read file.
 		fPath := path.Join(p.sourceDir, sfn)
 
@@ -378,17 +378,10 @@ func (p *Processor) Decrypt() error {
 				return nil, fmt.Errorf("failed to decrypt metadata: %v", decMDErr)
 			}
 
-			// Update IV.
-			var pIVErr error
-			p.iv, pIVErr = nextIV(p.iv)
-			if pIVErr != nil {
-				return nil, fmt.Errorf("failed to generate next IV: %v", pIVErr)
-			}
-
 			// Unmarshall metadata.
 			var fi fileInfo
 
-			log.Printf("-->> Decrypt file metadata ===%v===\n", decMD)
+			// log.Printf("-->> Decrypt file metadata ===%v===\n", decMD)
 
 			fiErr := json.Unmarshal(decMD, &fi)
 			if fiErr != nil {
@@ -440,13 +433,6 @@ func (p *Processor) Decrypt() error {
 					decFC, decFCErr := cbc.Decrypt(currSectorData, p.encryptionKey, p.iv)
 					if decFCErr != nil {
 						return fmt.Errorf("failed to decrypt file part contents: %v", decFCErr)
-					}
-
-					// Update IV.
-					var pIVErr error
-					p.iv, pIVErr = nextIV(p.iv)
-					if pIVErr != nil {
-						return fmt.Errorf("failed to generate next IV: %v", pIVErr)
 					}
 
 					// Append to file.
@@ -501,13 +487,6 @@ func (p *Processor) Decrypt() error {
 					decFC, decFCErr := cbc.Decrypt(currSectorData, p.encryptionKey, p.iv)
 					if decFCErr != nil {
 						return fmt.Errorf("failed to decrypt file part contents: %v", decFCErr)
-					}
-
-					// Update IV.
-					var pIVErr error
-					p.iv, pIVErr = nextIV(p.iv)
-					if pIVErr != nil {
-						return fmt.Errorf("failed to generate next IV: %v", pIVErr)
 					}
 
 					// Append to file.
