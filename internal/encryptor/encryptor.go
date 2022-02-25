@@ -147,6 +147,12 @@ func (p *Processor) Encrypt() error {
 				size = info.Size()
 			}
 
+			// Validate filesize.
+			if ft == FILE && size == 0 {
+				log.Printf("empty file detected, ignoring: %s", path)
+				return nil
+			}
+
 			files = append(files, &fileInfo{
 				RelativePath: path,
 				Filetype:     ft,
