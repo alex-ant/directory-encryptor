@@ -62,6 +62,10 @@ func pkcs5Padding(ciphertext []byte, blockSize int) []byte {
 }
 
 func pkcs5Trimming(encrypt []byte) ([]byte, error) {
+	if len(encrypt) == 0 {
+		return nil, errors.New("empty trimming array")
+	}
+
 	encIdx := len(encrypt) - 1
 
 	if encIdx > len(encrypt)-1 {

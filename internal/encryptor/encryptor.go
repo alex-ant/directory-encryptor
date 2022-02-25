@@ -364,6 +364,7 @@ func (p *Processor) Decrypt() error {
 
 		var currSectorData []byte
 		var currFile *os.File
+		var currFilename string
 		var mdRead bool
 
 		resetState := func() {
@@ -374,6 +375,8 @@ func (p *Processor) Decrypt() error {
 				currFile.Close()
 				currFile = nil
 			}
+
+			currFilename = ""
 		}
 
 		decryptMD := func() (*fileInfo, error) {
@@ -437,7 +440,7 @@ func (p *Processor) Decrypt() error {
 					// Decrypt file part contents.
 					decFC, decFCErr := cbc.Decrypt(currSectorData, p.encryptionKey, p.iv)
 					if decFCErr != nil {
-						return fmt.Errorf("failed to decrypt file part contents (%v): %v", currSectorData, decFCErr)
+						return fmt.Errorf("failed to decrypt file %s part contents (%v): %v", currFilename, currSectorData, decFCErr)
 					}
 
 					// Append to file.
@@ -480,6 +483,7 @@ func (p *Processor) Decrypt() error {
 
 					// Store file pointer.
 					currFile = decF
+					currFilename = fName
 
 					mdRead = true
 
@@ -491,7 +495,7 @@ func (p *Processor) Decrypt() error {
 					// Decrypt file part contents.
 					decFC, decFCErr := cbc.Decrypt(currSectorData, p.encryptionKey, p.iv)
 					if decFCErr != nil {
-						return fmt.Errorf("failed to decrypt file part contents (%v): %v", currSectorData, decFCErr)
+						return fmt.Errorf("failed to decrypt file %s part contents (%v): %v", currFilename, currSectorData, decFCErr)
 					}
 
 					// Append to file.
