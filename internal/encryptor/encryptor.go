@@ -380,7 +380,7 @@ func (p *Processor) Decrypt() error {
 			// Decrypt metadata.
 			decMD, decMDErr := cbc.Decrypt(currSectorData, p.encryptionKey, p.iv)
 			if decMDErr != nil {
-				return nil, fmt.Errorf("failed to decrypt metadata: %v", decMDErr)
+				return nil, fmt.Errorf("failed to decrypt metadata (%v): %v", currSectorData, decMDErr)
 			}
 
 			// Unmarshall metadata.
@@ -437,7 +437,7 @@ func (p *Processor) Decrypt() error {
 					// Decrypt file part contents.
 					decFC, decFCErr := cbc.Decrypt(currSectorData, p.encryptionKey, p.iv)
 					if decFCErr != nil {
-						return fmt.Errorf("failed to decrypt file part contents: %v", decFCErr)
+						return fmt.Errorf("failed to decrypt file part contents (%v): %v", currSectorData, decFCErr)
 					}
 
 					// Append to file.
@@ -491,7 +491,7 @@ func (p *Processor) Decrypt() error {
 					// Decrypt file part contents.
 					decFC, decFCErr := cbc.Decrypt(currSectorData, p.encryptionKey, p.iv)
 					if decFCErr != nil {
-						return fmt.Errorf("failed to decrypt file part contents: %v", decFCErr)
+						return fmt.Errorf("failed to decrypt file part contents (%v): %v", currSectorData, decFCErr)
 					}
 
 					// Append to file.
