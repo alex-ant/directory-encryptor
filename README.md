@@ -1,5 +1,7 @@
 # directory-encryptor
 
+Encrypt your directories with AES256-CBC in a convenient way
+
 ### Usage
 
 Encrypt directory (-b for 200Mb max single encrypted file size):  
