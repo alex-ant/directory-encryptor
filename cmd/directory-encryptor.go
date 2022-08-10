@@ -18,10 +18,18 @@ func main() {
 
 	var pErr error
 
-	if *config.Mode == "encrypt" {
+	switch *config.Mode {
+	case "encrypt":
 		pErr = enc.Encrypt()
-	} else {
+
+	case "decrypt":
 		pErr = enc.Decrypt()
+
+	case "validate":
+		pErr = enc.Validate()
+
+	default:
+		log.Fatalf("invalid mode %s, supported modes - encrypt/decryp/validatet", *config.Mode)
 	}
 
 	if pErr != nil {

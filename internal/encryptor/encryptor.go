@@ -355,8 +355,10 @@ func (p *Processor) Decrypt() error {
 
 	sort.Strings(sFilenames)
 
+	var progressPerc int
+
 	// Loop over encrypted files.
-	for _, sfn := range sFilenames {
+	for sfnI, sfn := range sFilenames {
 		// Update IV.
 		var pIVErr error
 		p.iv, pIVErr = nextIV(p.iv)
@@ -531,6 +533,244 @@ func (p *Processor) Decrypt() error {
 
 		encF.Close()
 		encGzipF.Close()
+
+		// Print progress.
+		currentPerc := sfnI * 100 / len(sFilenames)
+		if currentPerc != progressPerc {
+			progressPerc = currentPerc
+			log.Printf("%d%%", currentPerc)
+		}
+	}
+
+	if progressPerc != 100 {
+		log.Print("100%")
+	}
+
+	return nil
+}
+
+func (p *Processor) Validate() error {
+	// List encrypted files.
+	var sFilenames []string
+
+	sFiles, sFilesErr := ioutil.ReadDir(p.sourceDir)
+	if sFilesErr != nil {
+		return fmt.Errorf("failed to list source files directory: %v", sFilesErr)
+	}
+
+	for _, sf := range sFiles {
+		if sf.IsDir() {
+			continue
+		}
+
+		// Skip hidden files.
+		if sf.Name()[:1] == "." {
+			continue
+		}
+
+		sFilenames = append(sFilenames, sf.Name())
+	}
+
+	sort.Strings(sFilenames)
+
+	var progressPerc int
+
+	// Loop over encrypted files.
+	for sfnI, sfn := range sFilenames {
+		// Update IV.
+		var pIVErr error
+		p.iv, pIVErr = nextIV(p.iv)
+		if pIVErr != nil {
+			return fmt.Errorf("failed to generate next IV: %v", pIVErr)
+		}
+
+		// Read file.
+		fPath := path.Join(p.sourceDir, sfn)
+
+		encGzipF, encGzipFErr := os.Open(fPath)
+		if encGzipFErr != nil {
+			return fmt.Errorf("failed to open file %s: %v", fPath, encGzipFErr)
+		}
+
+		encF, encFErr := gzip.NewReader(encGzipF)
+		if encFErr != nil {
+			return fmt.Errorf("failed to init gzip reader on file %s: %v", fPath, encFErr)
+		}
+
+		br := bufio.NewReader(encF)
+
+		var currSectorData []byte
+		var currFile *os.File
+		var currFileReader *bufio.Reader
+		var currFilename string
+		var mdRead bool
+
+		resetState := func() {
+			currSectorData = []byte{}
+			mdRead = false
+
+			if currFile != nil {
+				currFile.Close()
+				currFile = nil
+			}
+
+			currFileReader = nil
+
+			currFilename = ""
+		}
+
+		decryptMD := func() (*fileInfo, error) {
+			// Decrypt metadata.
+			decMD, decMDErr := cbc.Decrypt(currSectorData, p.encryptionKey, p.iv)
+			if decMDErr != nil {
+				return nil, fmt.Errorf("failed to decrypt metadata (%v): %v", currSectorData, decMDErr)
+			}
+
+			// Unmarshall metadata.
+			var fi fileInfo
+
+			fiErr := json.Unmarshal(decMD, &fi)
+			if fiErr != nil {
+				return nil, fmt.Errorf("failed to unmarshall metadata (%s): %v", string(decMD), fiErr)
+			}
+
+			return &fi, nil
+		}
+
+		for {
+			b, bErr := br.ReadByte()
+			if bErr != nil {
+				if bErr != io.EOF {
+					return fmt.Errorf("failed to read file %s byte: %v", fPath, bErr)
+				}
+
+				break
+			}
+
+			switch string(b) {
+			case "$":
+				if !mdRead {
+					// Decrypt directory metadata.
+					fi, fiErr := decryptMD()
+					if fiErr != nil {
+						return fmt.Errorf("failed to decrypt directory metadata: %v", fiErr)
+					}
+
+					if fi.Filetype != DIRECTORY {
+						return fmt.Errorf("expected directory (%d) metadata but received (%d)", DIRECTORY, fi.Filetype)
+					}
+
+					// Do nothing for directories.
+
+					// Reset state.
+					resetState()
+
+					// Proceed reading next bytes.
+					continue
+
+				} else {
+					// Decrypt file part contents.
+					decFC, decFCErr := cbc.Decrypt(currSectorData, p.encryptionKey, p.iv)
+					if decFCErr != nil {
+						return fmt.Errorf("failed to decrypt file %s part contents (%v): %v", currFilename, currSectorData, decFCErr)
+					}
+
+					// Compare to decrypted file.
+					for i := 0; i < len(decFC); i++ {
+						decB, decErr := currFileReader.ReadByte()
+						if decErr != nil {
+							return fmt.Errorf("failed to read raw file: %v", decErr)
+						}
+
+						if decB != decFC[i] {
+							return fmt.Errorf("filedata doesn't match for file: %s", currFilename)
+						}
+					}
+
+					// Reset state.
+					resetState()
+
+					// Proceed reading next bytes.
+					continue
+				}
+
+			case "?":
+				// Process file metadata
+				if !mdRead {
+					// Decrypt file metadata.
+					fi, fiErr := decryptMD()
+					if fiErr != nil {
+						return fmt.Errorf("failed to decrypt file metadata: %v", fiErr)
+					}
+
+					if fi.Filetype != FILE {
+						return fmt.Errorf("expected file (%d) metadata but received (%d)", FILE, fi.Filetype)
+					}
+
+					fName := fmt.Sprintf("%s/%s", p.outputDir, fi.RelativePath)
+
+					// Open decrypted file.
+					decF, decFErr := os.Open(fName)
+					if decFErr != nil {
+						return fmt.Errorf("failed to open decrypted file: %v", decFErr)
+					}
+
+					decFReader := bufio.NewReader(decF)
+
+					// Store file pointer.
+					currFile = decF
+					currFileReader = decFReader
+					currFilename = fName
+
+					mdRead = true
+
+					currSectorData = []byte{}
+
+					// Continue with file contents in the following bytes.
+					continue
+				} else {
+					// Decrypt file part contents.
+					decFC, decFCErr := cbc.Decrypt(currSectorData, p.encryptionKey, p.iv)
+					if decFCErr != nil {
+						return fmt.Errorf("failed to decrypt file %s part contents (%v): %v", currFilename, currSectorData, decFCErr)
+					}
+
+					// Compare to decrypted file.
+					for i := 0; i < len(decFC); i++ {
+						decB, decErr := currFileReader.ReadByte()
+						if decErr != nil {
+							return fmt.Errorf("failed to read raw file: %v", decErr)
+						}
+
+						if decB != decFC[i] {
+							return fmt.Errorf("filedata doesn't match for file: %s", currFilename)
+						}
+					}
+
+					currSectorData = []byte{}
+
+					// Continue with file contents in the following bytes.
+					continue
+
+				}
+			}
+
+			currSectorData = append(currSectorData, b)
+		}
+
+		encF.Close()
+		encGzipF.Close()
+
+		// Print progress.
+		currentPerc := sfnI * 100 / len(sFilenames)
+		if currentPerc != progressPerc {
+			progressPerc = currentPerc
+			log.Printf("%d%%", currentPerc)
+		}
+	}
+
+	if progressPerc != 100 {
+		log.Print("100%")
 	}
 
 	return nil
