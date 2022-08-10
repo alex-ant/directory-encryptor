@@ -10,7 +10,7 @@ Encrypt directory (-b for 200Mb max single encrypted file size):
 Decrypt directory:  
 `go run cmd/directory-encryptor.go -s encrypted-data-dir -o decrypted-files-and-directories -p 'my-password' -m decrypt`
 
-Validate encrypted files against raw file directory (no file modifications):
+Validate encrypted files against raw file directory (no file modifications):  
 `go run cmd/directory-encryptor.go -i '.DS_Store' -s encrypted-data-dir -o decrypted-files-and-directories -p 'my-password' -m validate`
 
 ### TODOs
