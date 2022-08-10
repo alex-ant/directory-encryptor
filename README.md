@@ -12,3 +12,9 @@ Decrypt directory:
 
 Validate encrypted files against raw file directory (no file modifications):
 `go run cmd/directory-encryptor.go -i '.DS_Store' -s encrypted-data-dir -o decrypted-files-and-directories -p 'my-password' -m validate`
+
+### TODOs
+
+- The tool must be able to switch to validation mode straight after encryption process if the corresponding flag is provided
+- Ignore specified files during encryption using existing `-i` flag
+- Add concurrency (all CPUs by default)
