@@ -406,8 +406,6 @@ func (p *Processor) Decrypt() error {
 			// Unmarshall metadata.
 			var fi fileInfo
 
-			// log.Printf("-->> Decrypt file metadata ===%v===\n", decMD)
-
 			fiErr := json.Unmarshal(decMD, &fi)
 			if fiErr != nil {
 				return nil, fmt.Errorf("failed to unmarshall metadata (%s): %v", string(decMD), fiErr)
@@ -476,7 +474,6 @@ func (p *Processor) Decrypt() error {
 			case "?":
 				// Process file metadata
 				if !mdRead {
-
 					// Decrypt file metadata.
 					fi, fiErr := decryptMD()
 					if fiErr != nil {
@@ -527,7 +524,6 @@ func (p *Processor) Decrypt() error {
 					continue
 
 				}
-
 			}
 
 			currSectorData = append(currSectorData, b)
