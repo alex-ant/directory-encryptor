@@ -18,3 +18,4 @@ Validate encrypted files against raw file directory (no file modifications):
 - The tool must be able to switch to validation mode straight after encryption process if the corresponding flag is provided
 - Ignore specified files during encryption using existing `-i` flag
 - Add concurrency (all CPUs by default)
+- Add checksum to encrypted metadata for (way) faster encrypted data validation (keep older versions of encrypted data without checksums compatible with the tool, disable "rapid" validation for those)
