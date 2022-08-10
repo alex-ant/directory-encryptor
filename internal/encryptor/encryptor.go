@@ -33,12 +33,10 @@ type Processor struct {
 
 	encryptionKey string
 	iv            string
-
-	verboseLogs bool
 }
 
 // New returns new Processor.
-func New(maxBatchSize int64, sourceDir, outputDir string, password string, verboseLogs bool) (*Processor, error) {
+func New(maxBatchSize int64, sourceDir, outputDir string, password string) (*Processor, error) {
 	if password == "" {
 		return nil, errors.New("empty password provided")
 	}
@@ -89,8 +87,6 @@ func New(maxBatchSize int64, sourceDir, outputDir string, password string, verbo
 
 		encryptionKey: encryptionKey,
 		iv:            iv,
-
-		verboseLogs: verboseLogs,
 	}, nil
 }
 

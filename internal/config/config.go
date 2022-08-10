@@ -19,8 +19,6 @@ var (
 
 	Mode = flag.String("m", "", "operation mode (encrypt/decrypt)")
 
-	Verbose = flag.Bool("v", false, "Verbose logs")
-
 	MaxBatchSize = flag.Int64("b", batchSize200Mb, "Max encrypted batch file size in bytes (200Mb by default)")
 )
 
