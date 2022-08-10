@@ -107,7 +107,7 @@ func (p *Processor) Encrypt() error {
 	files := []*fileInfo{}
 
 	// Define size stat counters.
-	var writtenMD, writtenFiledata int64
+	var totalBytes, writtenMD, writtenFiledata int64
 
 	// List files to encrypt.
 	walkErr := filepath.Walk(
@@ -155,11 +155,15 @@ func (p *Processor) Encrypt() error {
 				size:         size,
 			})
 
+			totalBytes += size
+
 			return nil
 		})
 	if walkErr != nil {
 		return fmt.Errorf("failed to get contents of %s: %v", p.sourceDir, walkErr)
 	}
+
+	log.Printf("processing %d files, %d bytes", len(files), totalBytes)
 
 	// Generate metadata batches.
 	batches := [][]*fileInfo{}
@@ -196,6 +200,9 @@ func (p *Processor) Encrypt() error {
 	}
 
 	// Write result file.
+	var bytesProcessed int64
+	var progressPerc int
+
 	for batchI, batch := range batches {
 		// Update IV.
 		var pIVErr error
@@ -288,6 +295,14 @@ func (p *Processor) Encrypt() error {
 				}
 
 				writtenFiledata += int64(len(encData))
+				bytesProcessed += int64(len(data))
+
+				// Print progress.
+				currentPerc := int(bytesProcessed * 100 / totalBytes)
+				if currentPerc != progressPerc {
+					progressPerc = currentPerc
+					log.Printf("%d%%", currentPerc)
+				}
 
 				chunkI++
 
