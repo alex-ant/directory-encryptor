@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/alex-ant/directory-encryptor/internal/aes256/cbc"
 )
@@ -31,12 +32,14 @@ type Processor struct {
 	sourceDir string
 	outputDir string
 
+	ignoredFiles []string
+
 	encryptionKey string
 	iv            string
 }
 
 // New returns new Processor.
-func New(maxBatchSize int64, sourceDir, outputDir string, password string) (*Processor, error) {
+func New(maxBatchSize int64, sourceDir, outputDir string, password, ignoredFiles string) (*Processor, error) {
 	if password == "" {
 		return nil, errors.New("empty password provided")
 	}
@@ -85,6 +88,8 @@ func New(maxBatchSize int64, sourceDir, outputDir string, password string) (*Pro
 		sourceDir: sourceDir,
 		outputDir: outputDir,
 
+		ignoredFiles: strings.Split(ignoredFiles, ","),
+
 		encryptionKey: encryptionKey,
 		iv:            iv,
 	}, nil
@@ -101,6 +106,15 @@ type fileInfo struct {
 	RelativePath string   `json:"p"`
 	Filetype     filetype `json:"t"`
 	size         int64
+}
+
+func (p *Processor) ignoreFile(path string) bool {
+	for _, fName := range p.ignoredFiles {
+		if filepath.Base(path) == fName {
+			return true
+		}
+	}
+	return false
 }
 
 func (p *Processor) Encrypt() error {
@@ -602,12 +616,14 @@ func (p *Processor) Validate() error {
 		var currSectorData []byte
 		var currFile *os.File
 		var currFileReader *bufio.Reader
+		var ignoreCurrentFile bool
 		var currFilename string
 		var mdRead bool
 
 		resetState := func() {
 			currSectorData = []byte{}
 			mdRead = false
+			ignoreCurrentFile = false
 
 			if currFile != nil {
 				currFile.Close()
@@ -669,21 +685,23 @@ func (p *Processor) Validate() error {
 					continue
 
 				} else {
-					// Decrypt file part contents.
-					decFC, decFCErr := cbc.Decrypt(currSectorData, p.encryptionKey, p.iv)
-					if decFCErr != nil {
-						return fmt.Errorf("failed to decrypt file %s part contents (%v): %v", currFilename, currSectorData, decFCErr)
-					}
-
-					// Compare to decrypted file.
-					for i := 0; i < len(decFC); i++ {
-						decB, decErr := currFileReader.ReadByte()
-						if decErr != nil {
-							return fmt.Errorf("failed to read raw file: %v", decErr)
+					if !ignoreCurrentFile {
+						// Decrypt file part contents.
+						decFC, decFCErr := cbc.Decrypt(currSectorData, p.encryptionKey, p.iv)
+						if decFCErr != nil {
+							return fmt.Errorf("failed to decrypt file %s part contents (%v): %v", currFilename, currSectorData, decFCErr)
 						}
 
-						if decB != decFC[i] {
-							return fmt.Errorf("filedata doesn't match for file: %s", currFilename)
+						// Compare to decrypted file.
+						for i := 0; i < len(decFC); i++ {
+							decB, decErr := currFileReader.ReadByte()
+							if decErr != nil {
+								return fmt.Errorf("failed to read raw file: %v", decErr)
+							}
+
+							if decB != decFC[i] {
+								return fmt.Errorf("filedata doesn't match for file: %s", currFilename)
+							}
 						}
 					}
 
@@ -710,12 +728,19 @@ func (p *Processor) Validate() error {
 					fName := fmt.Sprintf("%s/%s", p.outputDir, fi.RelativePath)
 
 					// Open decrypted file.
-					decF, decFErr := os.Open(fName)
-					if decFErr != nil {
-						return fmt.Errorf("failed to open decrypted file: %v", decFErr)
-					}
+					var decF *os.File
+					var decFReader *bufio.Reader
+					if !p.ignoreFile(fName) {
+						var decFErr error
+						decF, decFErr = os.Open(fName)
+						if decFErr != nil {
+							return fmt.Errorf("failed to open decrypted file: %v", decFErr)
+						}
 
-					decFReader := bufio.NewReader(decF)
+						decFReader = bufio.NewReader(decF)
+					} else {
+						ignoreCurrentFile = true
+					}
 
 					// Store file pointer.
 					currFile = decF
@@ -730,20 +755,22 @@ func (p *Processor) Validate() error {
 					continue
 				} else {
 					// Decrypt file part contents.
-					decFC, decFCErr := cbc.Decrypt(currSectorData, p.encryptionKey, p.iv)
-					if decFCErr != nil {
-						return fmt.Errorf("failed to decrypt file %s part contents (%v): %v", currFilename, currSectorData, decFCErr)
-					}
-
-					// Compare to decrypted file.
-					for i := 0; i < len(decFC); i++ {
-						decB, decErr := currFileReader.ReadByte()
-						if decErr != nil {
-							return fmt.Errorf("failed to read raw file: %v", decErr)
+					if !ignoreCurrentFile {
+						decFC, decFCErr := cbc.Decrypt(currSectorData, p.encryptionKey, p.iv)
+						if decFCErr != nil {
+							return fmt.Errorf("failed to decrypt file %s part contents (%v): %v", currFilename, currSectorData, decFCErr)
 						}
 
-						if decB != decFC[i] {
-							return fmt.Errorf("filedata doesn't match for file: %s", currFilename)
+						// Compare to decrypted file.
+						for i := 0; i < len(decFC); i++ {
+							decB, decErr := currFileReader.ReadByte()
+							if decErr != nil {
+								return fmt.Errorf("failed to read raw file: %v", decErr)
+							}
+
+							if decB != decFC[i] {
+								return fmt.Errorf("filedata doesn't match for file: %s", currFilename)
+							}
 						}
 					}
 

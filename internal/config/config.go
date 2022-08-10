@@ -19,6 +19,8 @@ var (
 
 	Mode = flag.String("m", "", "operation mode (encrypt/decrypt)")
 
+	IgnoredFiles = flag.String("i", ".DS_Store", "comma-separated list of file base names to ignore during the validation")
+
 	MaxBatchSize = flag.Int64("b", batchSize200Mb, "Max encrypted batch file size in bytes (200Mb by default)")
 )
 
