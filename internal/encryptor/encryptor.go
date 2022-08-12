@@ -419,7 +419,7 @@ func (p *Processor) Decrypt() error {
 				return nil, fmt.Errorf("failed to decrypt metadata (%v): %v", currSectorData, decMDErr)
 			}
 
-			// Unmarshall metadata.
+			// Unmarshal metadata.
 			var fi fileInfo
 
 			fiErr := json.Unmarshal(decMD, &fi)
@@ -642,7 +642,7 @@ func (p *Processor) Validate() error {
 				return nil, fmt.Errorf("failed to decrypt metadata (%v): %v", currSectorData, decMDErr)
 			}
 
-			// Unmarshall metadata.
+			// Unmarshal metadata.
 			var fi fileInfo
 
 			fiErr := json.Unmarshal(decMD, &fi)
