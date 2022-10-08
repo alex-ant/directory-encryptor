@@ -318,7 +318,7 @@ func (p *Processor) Encrypt() error {
 				if currentPerc != progressPerc {
 					progressPerc = currentPerc
 					elapsedMs := time.Now().UnixMilli() - batchStart.UnixMilli()
-					eta := time.Duration(time.Millisecond * time.Duration(int64(elapsedMs)*100/int64(currentPerc)))
+					eta := time.Duration(time.Millisecond * time.Duration(int64(elapsedMs)*100/int64(currentPerc)-elapsedMs))
 
 					log.Printf("%d%%, ETA %s", currentPerc, eta.String())
 				}
