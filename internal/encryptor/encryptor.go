@@ -17,6 +17,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/alex-ant/directory-encryptor/internal/aes256/cbc"
 )
@@ -216,6 +217,7 @@ func (p *Processor) Encrypt() error {
 	// Write result file.
 	var bytesProcessed int64
 	var progressPerc int
+	batchStart := time.Now()
 
 	for batchI, batch := range batches {
 		// Update IV.
@@ -314,8 +316,13 @@ func (p *Processor) Encrypt() error {
 				// Print progress.
 				currentPerc := int(bytesProcessed * 100 / totalBytes)
 				if currentPerc != progressPerc {
+					elapsedMs := time.Now().UnixMilli() - batchStart.UnixMilli()
+					eta := time.Duration(time.Millisecond * time.Duration(int64(elapsedMs)*(100-int64(currentPerc))))
+
+					log.Printf("%d%%, ETA %s", currentPerc, eta.String())
+
 					progressPerc = currentPerc
-					log.Printf("%d%%", currentPerc)
+					batchStart = time.Now()
 				}
 
 				chunkI++
