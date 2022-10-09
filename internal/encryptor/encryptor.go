@@ -597,6 +597,7 @@ func (p *Processor) Validate() error {
 	sort.Strings(sFilenames)
 
 	var progressPerc int
+	batchStart := time.Now()
 
 	// Loop over encrypted files.
 	for sfnI, sfn := range sFilenames {
@@ -801,7 +802,11 @@ func (p *Processor) Validate() error {
 		currentPerc := sfnI * 100 / len(sFilenames)
 		if currentPerc != progressPerc {
 			progressPerc = currentPerc
-			log.Printf("%d%%", currentPerc)
+
+			elapsedMs := time.Now().UnixMilli() - batchStart.UnixMilli()
+			eta := time.Duration(time.Millisecond * time.Duration(int64(elapsedMs)*100/int64(currentPerc)-elapsedMs))
+
+			log.Printf("%d%%, ETA %s", currentPerc, eta.String())
 		}
 	}
 
