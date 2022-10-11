@@ -219,6 +219,13 @@ func (p *Processor) Encrypt() error {
 	var progressPerc int
 	batchStart := time.Now()
 
+	var initShift int
+	var initErr error
+	p.iv, initShift, initErr = p.encryptionInits()
+	if initErr != nil {
+		return fmt.Errorf("failed to calculate inits: %v", initErr)
+	}
+
 	for batchI, batch := range batches {
 		// Update IV.
 		var pIVErr error
@@ -228,7 +235,7 @@ func (p *Processor) Encrypt() error {
 		}
 
 		// Open batch result file.
-		fnStr, fnStrErr := fileNumber(batchI+1, 32)
+		fnStr, fnStrErr := fileNumber(batchI+1+initShift, 32)
 		if fnStrErr != nil {
 			return fmt.Errorf("failed to generate file number string: %v", fnStrErr)
 		}
@@ -348,6 +355,40 @@ func (p *Processor) Encrypt() error {
 	log.Printf("encrypted %d bytes of metadata and %d bytes of filedata", writtenMD, writtenFiledata)
 
 	return nil
+}
+
+func (p *Processor) encryptionInits() (string, int, error) {
+	// List encrypted files.
+	sFiles, sFilesErr := ioutil.ReadDir(p.outputDir)
+	if sFilesErr != nil || len(sFiles) == 0 {
+		return p.iv, 0, nil
+	}
+
+	var count int
+
+	for _, sf := range sFiles {
+		if sf.IsDir() {
+			continue
+		}
+
+		// Skip hidden files.
+		if sf.Name()[:1] == "." {
+			continue
+		}
+
+		count++
+	}
+
+	// Determine shifted IV.
+	newIV := p.iv
+	for i := 0; i < count; i++ {
+		var pIVErr error
+		newIV, pIVErr = nextIV(newIV)
+		if pIVErr != nil {
+			return "", 0, fmt.Errorf("failed to generate next IV: %v", pIVErr)
+		}
+	}
+	return newIV, count, nil
 }
 
 func (p *Processor) Decrypt() error {
