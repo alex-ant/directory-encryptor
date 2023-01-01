@@ -62,7 +62,7 @@ func New(maxBatchSize int64, sourceDir, outputDir string, password, ignoredFiles
 		outputDir = outputDir[:len(outputDir)-1]
 	}
 
-	// Create output directory exists.
+	// Create output directory if one doesn't exist.
 	if _, err := os.Stat(outputDir); os.IsNotExist(err) {
 		mkdirErr := os.Mkdir(outputDir, 0755)
 		if mkdirErr != nil {
