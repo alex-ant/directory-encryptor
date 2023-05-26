@@ -12,8 +12,8 @@ func TestCBC(t *testing.T) {
 	rand.Seed(time.Now().UnixNano())
 
 	const (
-		testKey = "e3f3fbe7024a443e99bc4932f591fb31"
-		iv      = "1010101010101010"
+		testKey = `NJ*R07(l@K!<P8j0\qI^0'(rb;f&\;.f` // 32 bytes
+		iv      = `hII>]?oE=96mk&U&`                 // 16 bytes
 
 		minDataSrtLen = 10
 		maxDataSrtLen = 300
